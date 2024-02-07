@@ -4,6 +4,7 @@ import ApiResponse from "../utils/ApiResponse.js"
 import { User } from "../models/user.model.js";
 import { uplpadOnCloudinary } from "../utils/cloudinary.js";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 const generateAccessAndRefreshTokens = async (userId) => {
     try {
@@ -140,7 +141,7 @@ const loginUser = asyncHandler(async (req, res) => {
         .cookie("refreshToken", refreshToken, options)
         .json(
             new ApiResponse(200, { loggedInUser, accessToken, refreshToken },
-                "User logged In sucessfully"
+                "User logged In successfully"
             )
         )
 })
@@ -219,14 +220,14 @@ const changeCurrentPassward = asyncHandler(async (req, res) => {
 
     return res.status(200)
         .json(
-            new ApiResponse(200, {}, "Passward changed sucessfully")
+            new ApiResponse(200, {}, "Passward changed successfully")
         )
 })
 
 const currentUser = asyncHandler(async (req, res) => {
     return res.status(200)
         .json(
-            new ApiResponse(200, req.user, "current user fetched sucessfully")
+            new ApiResponse(200, req.user, "current user fetched successfully")
         )
 })
 
@@ -274,12 +275,13 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
 
     return res.status(200)
         .json(
-            new ApiResponse(200, user, "Avatar updated sucessfully")
+            new ApiResponse(200, user, "Avatar updated successfully")
         )
 })
 
 const updateUserCoverImage = asyncHandler(async (req, res) => {
     const coverImageLocalPath = req.file?.path;
+    const oldCoverImage = req.user?.coverImage;
 
     if (!coverImageLocalPath) {
         throw new ApiError(400, "Cover image is missing")
@@ -299,8 +301,146 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
         },
         { new: true }).select("-passward")
 
+    if (!oldCoverImage === "") {
+        try {
+            const isOldImageDelete = await deleteOldFileInCloudinary(oldCoverImage);
+            console.log("isOldImageDelete ", isOldImageDelete);
+        } catch (error) {
+            console.log("error - ", error);
+        }
+    }
+
     return res.status(200)
         .json(new ApiResponse(200, user, "Cover image updated successfully"))
+})
+
+const getUserChannelProfile = asyncHandler(async (req, res) => {
+
+    // req.params is used for data coming from url
+    const { username } = req.params;
+
+    if (!username?.trim()) {
+        throw new ApiError(400, "Username is missing")
+    }
+
+    // aggregate function is used to filter the data with the help of multiple pipelines
+    const channel = await User.aggregate([
+        {
+            // match is used to find document where username is same
+            $match: {
+                username: username?.toLowerCase()
+            }
+        },
+        {
+            // lookup is used to replace the data value with (object in array) with the matched data value (also called left join)
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "channel",
+                as: "subscriber"
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "subscriber",
+                as: "subscribedChannels"
+            }
+        },
+        {
+            // addFields is used to add feilds in documents
+            $addFields: {
+                subcribersCount: {
+                    $size: "$subscribers"
+                },
+                subscribedChannelsCount: {
+                    $size: "$subscribedChannels"
+                },
+                isSubscribed: {
+                    // cond is used to apply condition
+                    $cond: {
+                        // $in is used to find data in the given object or array
+                        if: { $in: [req.user?._id, "$subscribers.subscriber"] },
+                        then: true,
+                        else: false
+                    }
+                }
+            }
+        },
+        {
+            // $project is used to filter selected feilds
+            $project: {
+                username: 1,
+                fullName: 1,
+                subcribersCount: 1,
+                subscribedChannelsCount: 1,
+                isSubscribed: 1,
+                avatar: 1,
+                coverImage: 1
+            }
+        }
+    ])
+
+    if (channel?.length) {
+        throw new ApiError(404, "Channel does not exist")
+    }
+
+    return res.status(200)
+        .json(
+            new ApiResponse(200, channel[0], "User channel successfully fetched")
+        )
+})
+
+const getWatchHistory = asyncHandler(async (req, res) => {
+    const user = await User.aggregate([
+        {
+            $match: {
+                // to convert id string into id and compare it with id
+                _id: new mongoose.Types.ObjectId(req.user?._id)
+            }
+        }, {
+            // nested lookup
+            $lookup: {
+                from: "videos",
+                localField: "watchHistory",
+                foreignField: "_id",
+                as: "watchHistory",
+                pipeline: [
+                    {
+                        $lookup: {
+                            from: "users",
+                            localField: "owner",
+                            foreignField: "_id",
+                            as: "owner",
+                            pipeline: [
+                                {
+                                    $project: {
+                                        username: 1,
+                                        fullName: 1,
+                                        avatar: 1
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        $addFields: {
+                            // to exchange first object of array with array
+                            owner: {
+                                $first: "$owner"
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ])
+
+    return res.status(200)
+    .json(
+        new ApiResponse(200,user[0].watchHistory,"User history fetched successfully")
+    )
 })
 
 export {
@@ -312,5 +452,7 @@ export {
     currentUser,
     updateAccountDetails,
     updateUserAvatar,
-    updateUserCoverImage
+    updateUserCoverImage,
+    getUserChannelProfile,
+    getWatchHistory
 }
