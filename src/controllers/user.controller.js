@@ -105,9 +105,9 @@ const loginUser = asyncHandler(async (req, res) => {
     // check passward
     // access and refresh token
     // send cookie
-    
+
     const { username, email, passward } = req.body;
-    
+
     if (!(username || email)) {
         throw new ApiError(400, "username or passward is required");
     }
@@ -194,7 +194,7 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
             secure: true
         }
 
-        const { accessToken, newRefreshToken } = await generateAccessToken(user._id);
+        const { accessToken, newRefreshToken } = await generateAccessAndRefreshTokens(user._id);
 
         return res.status(200)
             .cookie("accessToken", accessToken)
@@ -385,13 +385,13 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
         }
     ])
 
-    if (channel?.length) {
+    if (!channel?.length) {
         throw new ApiError(404, "Channel does not exist")
     }
 
     return res.status(200)
         .json(
-            new ApiResponse(200, channel[0], "User channel successfully fetched")
+            new ApiResponse(200, channel, "User channel successfully fetched")
         )
 })
 
