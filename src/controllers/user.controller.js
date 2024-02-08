@@ -105,9 +105,9 @@ const loginUser = asyncHandler(async (req, res) => {
     // check passward
     // access and refresh token
     // send cookie
-
+    
     const { username, email, passward } = req.body;
-
+    
     if (!(username || email)) {
         throw new ApiError(400, "username or passward is required");
     }
@@ -150,7 +150,10 @@ const logoutUser = asyncHandler(async (req, res) => {
     await User.findByIdAndUpdate(req.user._id, {
         $set: {
             refreshToken: undefined
-        }
+        },
+        // $unset:{
+        //     refreshAccessToken:1
+        // }
     }, {
         new: true
     })
@@ -438,9 +441,9 @@ const getWatchHistory = asyncHandler(async (req, res) => {
     ])
 
     return res.status(200)
-    .json(
-        new ApiResponse(200,user[0].watchHistory,"User history fetched successfully")
-    )
+        .json(
+            new ApiResponse(200, user[0].watchHistory, "User history fetched successfully")
+        )
 })
 
 export {
