@@ -36,7 +36,7 @@ const registerUser = asyncHandler(async (req, res) => {
 
     if (
         // some function will return ture if any field in the array will empty
-        ["username", "fullName", "username", "email"].some((field) => {
+        ["username", "fullName", "passward", "email"].some((field) => {
             field?.trim() === ""
         })
     ) {
